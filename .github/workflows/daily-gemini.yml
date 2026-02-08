@@ -1,38 +1,41 @@
-# .github/workflows/daily-gemini-screener.yaml
 name: Daily Gemini Market Screener
 
 on:
   schedule:
-    # US: Mon–Fri 10 min before open (13:20 UTC = 9:20 AM ET)
-    - cron: '20 13 * * 1-5'
-    # INDIA: Mon–Fri 10 min before open (3:35 UTC = 9:05 AM IST)
-    - cron: '35 3 * * 1-5'
-    # LONDON: Mon–Fri 10 min before open (7:50 UTC = 7:50 AM GMT)
-    - cron: '50 7 * * 1-5'
-    # CRYPTO: Every 6 hours (00:00, 06:00, 12:00, 18:00 UTC)
+    # US: Mon–Fri ~90 min before open (12:00 UTC ≈ 7:00 AM ET)
+    - cron: '0 12 * * 1-5'
+
+    # INDIA: Mon–Fri ~90 min before open (02:00 UTC ≈ 7:30 AM IST)
+    - cron: '0 2 * * 1-5'
+
+    # LONDON: Mon–Fri ~90 min before open (06:30 UTC)
+    - cron: '30 6 * * 1-5'
+
+    # CRYPTO: Every 6 hours
     - cron: '0 */6 * * *'
-  workflow_dispatch:  # Manual trigger
+
+  workflow_dispatch:
 
 jobs:
   trigger-gemini:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger US Screener
-        if: github.event.schedule == '20 13 * * 1-5'
+        if: github.event.schedule == '0 12 * * 1-5'
         run: |
           curl -X POST https://javabjsklqxusqrkdbst.supabase.co/functions/v1/activate-gemini \
             -H "Content-Type: application/json" \
             -d '{"region": "US"}'
 
       - name: Trigger INDIA Screener
-        if: github.event.schedule == '35 3 * * 1-5'
+        if: github.event.schedule == '0 2 * * 1-5'
         run: |
           curl -X POST https://javabjsklqxusqrkdbst.supabase.co/functions/v1/activate-gemini \
             -H "Content-Type: application/json" \
             -d '{"region": "INDIA"}'
 
       - name: Trigger LONDON Screener
-        if: github.event.schedule == '50 7 * * 1-5'
+        if: github.event.schedule == '30 6 * * 1-5'
         run: |
           curl -X POST https://javabjsklqxusqrkdbst.supabase.co/functions/v1/activate-gemini \
             -H "Content-Type: application/json" \
