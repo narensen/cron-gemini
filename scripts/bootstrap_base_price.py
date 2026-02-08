@@ -6,8 +6,8 @@ import os
 # -----------------------------
 # Supabase init (env vars)
 # -----------------------------
-SUPABASE_URL = os.environ["SUPABASE_URL"]
-SUPABASE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+SUPABASE_KEY="sb_secret_ZM3eyP6AYlfNHEg7yGbYjA_T_xr_fEj"
+SUPABASE_URL="https://javabjsklqxusqrkdbst.supabase.co"
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
