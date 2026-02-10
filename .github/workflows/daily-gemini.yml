@@ -1,49 +1,93 @@
-name: Daily Gemini Market Screener
+name: Gemini → Base Price MVP
 
 on:
   schedule:
-    # US: Mon–Fri ~90 min before open (12:00 UTC ≈ 7:00 AM ET)
-    - cron: '0 12 * * 1-5'
-
-    # INDIA: Mon–Fri ~90 min before open (02:00 UTC ≈ 7:30 AM IST)
-    - cron: '0 2 * * 1-5'
-
-    # LONDON: Mon–Fri ~90 min before open (06:30 UTC)
-    - cron: '30 6 * * 1-5'
-
-    # CRYPTO: Every 6 hours
-    - cron: '0 */6 * * *'
-
-  workflow_dispatch:
+    - cron: '0 12 * * 1-5'   # US
+    - cron: '0 2 * * 1-5'    # INDIA
+    - cron: '30 6 * * 1-5'   # LONDON
+    - cron: '0 */6 * * *'    # CRYPTO
 
 jobs:
-  trigger-gemini:
+  gemini-and-bootstrap:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Trigger US Screener
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: |
+          pip install yfinance supabase
+
+      # -----------------------------
+      # US
+      # -----------------------------
+      - name: Gemini US
         if: github.event.schedule == '0 12 * * 1-5'
         run: |
           curl -X POST https://javabjsklqxusqrkdbst.supabase.co/functions/v1/activate-gemini \
             -H "Content-Type: application/json" \
-            -d '{"region": "US"}'
+            -d '{"region":"US"}'
 
-      - name: Trigger INDIA Screener
+      - name: Bootstrap US prices
+        if: github.event.schedule == '0 12 * * 1-5'
+        run: python scripts/bootstrap_base_price.py US
+        env:
+          SUPABASE_URL: https://javabjsklqxusqrkdbst.supabase.co
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+      # -----------------------------
+      # INDIA
+      # -----------------------------
+      - name: Gemini INDIA
         if: github.event.schedule == '0 2 * * 1-5'
         run: |
           curl -X POST https://javabjsklqxusqrkdbst.supabase.co/functions/v1/activate-gemini \
             -H "Content-Type: application/json" \
-            -d '{"region": "INDIA"}'
+            -d '{"region":"INDIA"}'
 
-      - name: Trigger LONDON Screener
+      - name: Bootstrap INDIA prices
+        if: github.event.schedule == '0 2 * * 1-5'
+        run: python scripts/bootstrap_base_price.py INDIA
+        env:
+          SUPABASE_URL: https://javabjsklqxusqrkdbst.supabase.co
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+      # -----------------------------
+      # LONDON
+      # -----------------------------
+      - name: Gemini LONDON
         if: github.event.schedule == '30 6 * * 1-5'
         run: |
           curl -X POST https://javabjsklqxusqrkdbst.supabase.co/functions/v1/activate-gemini \
             -H "Content-Type: application/json" \
-            -d '{"region": "LONDON"}'
+            -d '{"region":"LONDON"}'
 
-      - name: Trigger CRYPTO Screener
+      - name: Bootstrap LONDON prices
+        if: github.event.schedule == '30 6 * * 1-5'
+        run: python scripts/bootstrap_base_price.py LONDON
+        env:
+          SUPABASE_URL: https://javabjsklqxusqrkdbst.supabase.co
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+      # -----------------------------
+      # CRYPTO
+      # -----------------------------
+      - name: Gemini CRYPTO
         if: github.event.schedule == '0 */6 * * *'
         run: |
           curl -X POST https://javabjsklqxusqrkdbst.supabase.co/functions/v1/activate-gemini \
             -H "Content-Type: application/json" \
-            -d '{"region": "CRYPTO"}'
+            -d '{"region":"CRYPTO"}'
+
+      - name: Bootstrap CRYPTO prices
+        if: github.event.schedule == '0 */6 * * *'
+        run: python scripts/bootstrap_base_price.py CRYPTO
+        env:
+          SUPABASE_URL: https://javabjsklqxusqrkdbst.supabase.co
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
