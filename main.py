@@ -1,10 +1,9 @@
-import sys
 import yfinance as yf
 from supabase import create_client
 import os
 
 # -----------------------------
-# Supabase init (env vars)
+# Supabase init
 # -----------------------------
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
@@ -16,6 +15,8 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 # Yahoo symbol mapping
 # -----------------------------
 def yahoo_symbol(symbol: str, region: str) -> str:
+    region = (region or "").upper()
+
     if region == "INDIA":
         return f"{symbol}.NS"
     if region == "LONDON":
@@ -34,56 +35,69 @@ def get_previous_close(yf_symbol: str) -> float:
         raise ValueError("Insufficient history")
 
     close_price = hist.iloc[-2]["Close"]
-    if close_price is None:
-        raise ValueError("Close missing")
-
     return round(float(close_price), 2)
+
+
+# -----------------------------
+# Fetch markets
+# -----------------------------
+def fetch_markets():
+    data = supabase.table("markets").select("symbol, region").execute().data
+    return [(row["symbol"], row["region"]) for row in data]
+
+
+# -----------------------------
+# Fetch holdings
+# -----------------------------
+def fetch_holdings():
+    data = supabase.table("holdings").select("symbol, region").execute().data
+
+    pairs = []
+    for row in data:
+        symbol = row["symbol"]
+        region = row.get("region") or "US"
+        pairs.append((symbol, region))
+
+    return pairs
+
+
+# -----------------------------
+# Merge universe
+# -----------------------------
+def build_universe():
+    universe = set()
+
+    for pair in fetch_markets():
+        universe.add(pair)
+
+    for pair in fetch_holdings():
+        universe.add(pair)
+
+    return list(universe)
 
 
 # -----------------------------
 # Main
 # -----------------------------
-def main(region: str):
-    region = region.upper()
+def main():
+    universe = build_universe()
 
-    # Fetch finalized tickers from Gemini output
-    tickers = (
-        supabase
-        .table("markets")
-        .select("symbol")
-        .eq("region", region)
-        .execute()
-        .data
-    )
+    print(f"Bootstrapping {len(universe)} symbols")
 
-    for row in tickers:
-        symbol = row["symbol"]
-
-        # Check if already initialized
-        existing = (
-            supabase
-            .table("market_prices")
-            .select("base_price")
-            .eq("symbol", symbol)
-            .eq("region", region)
-            .limit(1)
-            .execute()
-            .data
-        )
-
-        if existing and existing[0]["base_price"] is not None:
-            continue
-
+    for symbol, region in universe:
         try:
             yf_sym = yahoo_symbol(symbol, region)
             prev_close = get_previous_close(yf_sym)
 
-            supabase.table("market_prices").upsert({
-                "symbol": symbol,
-                "region": region,
-                "base_price": prev_close,
-                "display_price": prev_close,
-            }).execute()
+            supabase.table("market_prices").upsert(
+                {
+                    "symbol": symbol,
+                    "region": region,
+                    "base_price": prev_close,
+                    "display_price": prev_close,
+                },
+                on_conflict="symbol,region"
+            ).execute()
 
             print(f"[OK] {symbol} ({region}) → {prev_close}")
 
@@ -92,6 +106,4 @@ def main(region: str):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        raise RuntimeError("Usage: bootstrap_base_prices.py <REGION>")
-    main(sys.argv[1])
+    main()
