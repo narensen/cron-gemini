@@ -1,13 +1,12 @@
 import sys
 import yfinance as yf
 from supabase import create_client
-import os
 
 # -----------------------------
-# Supabase init (env vars)
+# Supabase init
 # -----------------------------
-SUPABASE_KEY="sb_secret_ZM3eyP6AYlfNHEg7yGbYjA_T_xr_fEj"
-SUPABASE_URL="https://javabjsklqxusqrkdbst.supabase.co"
+SUPABASE_KEY = "sb_secret_ZM3eyP6AYlfNHEg7yGbYjA_T_xr_fEj"
+SUPABASE_URL = "https://javabjsklqxusqrkdbst.supabase.co"
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -24,20 +23,27 @@ def yahoo_symbol(symbol: str, region: str) -> str:
 
 
 # -----------------------------
-# Previous close
+# Yesterday close + intraday %
 # -----------------------------
-def get_previous_close(yf_symbol: str) -> float:
+def get_yesterday_data(yf_symbol: str):
     ticker = yf.Ticker(yf_symbol)
-    hist = ticker.history(period="2d", interval="1d")
 
-    if len(hist) < 2:
-        raise ValueError("Insufficient history")
+    hist = ticker.history(period="5d", interval="1d")
 
-    close_price = hist.iloc[-2]["Close"]
-    if close_price is None:
-        raise ValueError("Close missing")
+    if hist.empty:
+        raise ValueError("No history")
 
-    return round(float(close_price), 2)
+    row = hist.iloc[-1]
+
+    open_price = row["Open"]
+    close_price = row["Close"]
+
+    if open_price is None or open_price == 0:
+        raise ValueError("Invalid open")
+
+    pct_change = ((close_price - open_price) / open_price) * 100
+
+    return round(float(close_price), 2), round(float(pct_change), 2)
 
 
 # -----------------------------
@@ -46,7 +52,6 @@ def get_previous_close(yf_symbol: str) -> float:
 def main(region: str):
     region = region.upper()
 
-    # Fetch finalized tickers from Gemini output
     tickers = (
         supabase
         .table("markets")
@@ -59,7 +64,6 @@ def main(region: str):
     for row in tickers:
         symbol = row["symbol"]
 
-        # Check if already initialized
         existing = (
             supabase
             .table("market_prices")
@@ -76,16 +80,18 @@ def main(region: str):
 
         try:
             yf_sym = yahoo_symbol(symbol, region)
-            prev_close = get_previous_close(yf_sym)
+
+            prev_close, pct_change = get_yesterday_data(yf_sym)
 
             supabase.table("market_prices").upsert({
                 "symbol": symbol,
                 "region": region,
                 "base_price": prev_close,
                 "display_price": prev_close,
+                "yesterday_price_change": pct_change,
             }).execute()
 
-            print(f"[OK] {symbol} ({region}) → {prev_close}")
+            print(f"[OK] {symbol} ({region}) → {prev_close} | {pct_change}%")
 
         except Exception as e:
             print(f"[WARN] {symbol} ({region}) skipped: {e}")
@@ -94,4 +100,5 @@ def main(region: str):
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         raise RuntimeError("Usage: bootstrap_base_prices.py <REGION>")
+
     main(sys.argv[1])
