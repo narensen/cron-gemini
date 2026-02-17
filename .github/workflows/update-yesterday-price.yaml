@@ -1,0 +1,61 @@
+name: End of Market → Yesterday Price Update
+
+on:
+  schedule:
+    - cron: '30 21 * * 1-5'   # US (after close buffer)
+    - cron: '30 10 * * 1-5'   # INDIA (after close buffer)
+    - cron: '0 17 * * 1-5'    # LONDON (after close buffer)
+    - cron: '0 */6 * * *'     # CRYPTO (rolling updates)
+
+jobs:
+  update-yesterday-price:
+    runs-on: ubuntu-latest
+
+    env:
+      SUPABASE_URL: https://javabjsklqxusqrkdbst.supabase.co
+      SUPABASE_KEY: "sb_secret_ZM3eyP6AYlfNHEg7yGbYjA_T_xr_fEj"
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: |
+          pip install yfinance supabase
+
+      # =========================
+      # US
+      # =========================
+      - name: Update US yesterday price
+        if: github.event.schedule == '30 21 * * 1-5'
+        run: |
+          python scripts/update_yest_price.py US
+
+      # =========================
+      # INDIA
+      # =========================
+      - name: Update INDIA yesterday price
+        if: github.event.schedule == '30 10 * * 1-5'
+        run: |
+          python scripts/update_yest_price.py INDIA
+
+      # =========================
+      # LONDON
+      # =========================
+      - name: Update LONDON yesterday price
+        if: github.event.schedule == '0 17 * * 1-5'
+        run: |
+          python scripts/update_yest_price.py LONDON
+
+      # =========================
+      # CRYPTO
+      # =========================
+      - name: Update CRYPTO yesterday price
+        if: github.event.schedule == '0 */6 * * *'
+        run: |
+          python scripts/update_yest_price.py CRYPTO
