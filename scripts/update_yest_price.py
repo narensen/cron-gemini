@@ -5,8 +5,8 @@ from supabase import create_client
 # -----------------------------
 # Supabase init
 # -----------------------------
-SUPABASE_KEY = "sb_secret_ZM3eyP6AYlfNHEg7yGbYjA_T_xr_fEj"
-SUPABASE_URL = "https://javabjsklqxusqrkdbst.supabase.co"
+SUPABASE_KEY = "YOUR_KEY"
+SUPABASE_URL = "YOUR_URL"
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -15,23 +15,30 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 # Yahoo symbol mapping
 # -----------------------------
 def yahoo_symbol(symbol: str, region: str) -> str:
+    region = region.upper()
+
+    if region == "CRYPTO":
+        return f"{symbol}-USD"
+
     if region == "INDIA":
         return f"{symbol}.NS"
+
     if region == "LONDON":
         return f"{symbol}.L"
+
     return symbol
 
 
 # -----------------------------
-# Compute yesterday move
+# Equity logic
 # -----------------------------
-def get_yesterday_move(yf_symbol: str):
+def get_equity_move(yf_symbol: str):
     ticker = yf.Ticker(yf_symbol)
 
     hist = ticker.history(period="5d", interval="1d")
 
-    if hist.empty:
-        raise ValueError("No history")
+    if hist.empty or len(hist) < 1:
+        raise ValueError("No equity data")
 
     row = hist.iloc[-1]
 
@@ -44,6 +51,38 @@ def get_yesterday_move(yf_symbol: str):
     pct_change = ((close_price - open_price) / open_price) * 100
 
     return round(float(pct_change), 2)
+
+
+# -----------------------------
+# Crypto logic — rolling 24h
+# -----------------------------
+def get_crypto_24h_move(yf_symbol: str):
+    ticker = yf.Ticker(yf_symbol)
+
+    # hourly candles to approximate rolling window
+    hist = ticker.history(period="2d", interval="1h")
+
+    if hist.empty or len(hist) < 24:
+        raise ValueError("No crypto data")
+
+    latest = hist["Close"].iloc[-1]
+    prev_24h = hist["Close"].iloc[-24]
+
+    pct_change = ((latest - prev_24h) / prev_24h) * 100
+
+    return round(float(pct_change), 2)
+
+
+# -----------------------------
+# Dispatcher
+# -----------------------------
+def get_price_change(symbol: str, region: str):
+    yf_sym = yahoo_symbol(symbol, region)
+
+    if region == "CRYPTO":
+        return get_crypto_24h_move(yf_sym)
+
+    return get_equity_move(yf_sym)
 
 
 # -----------------------------
@@ -65,8 +104,7 @@ def main(region: str):
         symbol = row["symbol"]
 
         try:
-            yf_sym = yahoo_symbol(symbol, region)
-            pct_change = get_yesterday_move(yf_sym)
+            pct_change = get_price_change(symbol, region)
 
             supabase.table("market_prices") \
                 .update({
