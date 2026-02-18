@@ -12,15 +12,22 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
 # -----------------------------
-# Yahoo symbol mapping
+# Normalize symbol with suffix
 # -----------------------------
-def yahoo_symbol(symbol: str, region: str) -> str:
+def normalize_symbol(symbol: str, region: str) -> str:
+    symbol = symbol.strip().upper()
+
+    # Remove any existing suffix chain like .NS.NS
+    if "." in symbol:
+        symbol = symbol.split(".")[0]
+
     region = (region or "").upper()
 
     if region == "INDIA":
         return f"{symbol}.NS"
     if region == "LONDON":
         return f"{symbol}.L"
+
     return symbol
 
 
@@ -32,7 +39,7 @@ def get_previous_close(yf_symbol: str) -> float:
     hist = ticker.history(period="2d", interval="1d")
 
     if len(hist) < 2:
-        raise ValueError("Insufficient history")
+        raise ValueError("No history")
 
     close_price = hist.iloc[-2]["Close"]
     return round(float(close_price), 2)
@@ -86,12 +93,12 @@ def main():
 
     for symbol, region in universe:
         try:
-            yf_sym = yahoo_symbol(symbol, region)
-            prev_close = get_previous_close(yf_sym)
+            yf_symbol = normalize_symbol(symbol, region)
+            prev_close = get_previous_close(yf_symbol)
 
             supabase.table("market_prices").upsert(
                 {
-                    "symbol": symbol,
+                    "symbol": yf_symbol,  # ← store WITH suffix
                     "region": region,
                     "base_price": prev_close,
                     "display_price": prev_close,
@@ -99,7 +106,7 @@ def main():
                 on_conflict="symbol,region"
             ).execute()
 
-            print(f"[OK] {symbol} ({region}) → {prev_close}")
+            print(f"[OK] {yf_symbol} ({region}) → {prev_close}")
 
         except Exception as e:
             print(f"[WARN] {symbol} ({region}) skipped: {e}")
