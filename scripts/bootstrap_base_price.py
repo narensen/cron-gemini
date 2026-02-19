@@ -12,15 +12,21 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
 # -----------------------------
-# Normalize symbol with suffix
+# Canonical symbol (DB truth)
 # -----------------------------
-def normalize_symbol(symbol: str, region: str) -> str:
-    symbol = symbol.strip().upper()
+def canonical_symbol(symbol: str) -> str:
+    """
+    Strip any suffix like .NS or .L.
+    This is what we store in DB.
+    """
+    return symbol.strip().upper().split(".")[0]
 
-    # Remove any existing suffix chain like .NS.NS
-    if "." in symbol:
-        symbol = symbol.split(".")[0]
 
+# -----------------------------
+# Convert to yfinance symbol
+# -----------------------------
+def to_yf_symbol(symbol: str, region: str) -> str:
+    symbol = canonical_symbol(symbol)
     region = (region or "").upper()
 
     if region == "INDIA":
@@ -93,12 +99,14 @@ def main():
 
     for symbol, region in universe:
         try:
-            yf_symbol = normalize_symbol(symbol, region)
+            canon = canonical_symbol(symbol)
+            yf_symbol = to_yf_symbol(symbol, region)
+
             prev_close = get_previous_close(yf_symbol)
 
             supabase.table("market_prices").upsert(
                 {
-                    "symbol": yf_symbol,  # ← store WITH suffix
+                    "symbol": canon,  # ← NO SUFFIX
                     "region": region,
                     "base_price": prev_close,
                     "display_price": prev_close,
@@ -106,7 +114,7 @@ def main():
                 on_conflict="symbol,region"
             ).execute()
 
-            print(f"[OK] {yf_symbol} ({region}) → {prev_close}")
+            print(f"[OK] {canon} ({region}) → {prev_close}")
 
         except Exception as e:
             print(f"[WARN] {symbol} ({region}) skipped: {e}")
