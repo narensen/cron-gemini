@@ -21,10 +21,10 @@ def yahoo_symbol(symbol: str, region: str) -> str:
         return f"{symbol}-USD"
 
     if region == "INDIA":
-        return f"{symbol}.NS"
+        return f"{symbol}"
 
     if region == "LONDON":
-        return f"{symbol}.L"
+        return f"{symbol}"
 
     return symbol
 
