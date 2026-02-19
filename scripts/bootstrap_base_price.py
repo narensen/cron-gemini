@@ -16,9 +16,9 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 # -----------------------------
 def yahoo_symbol(symbol: str, region: str) -> str:
     if region == "INDIA":
-        return f"{symbol}.NS"
+        return f"{symbol}"
     if region == "LONDON":
-        return f"{symbol}.L"
+        return f"{symbol}"
     return symbol
 
 
