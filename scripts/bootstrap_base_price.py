@@ -1,124 +1,155 @@
 import yfinance as yf
+import httpx
 from supabase import create_client
-import os
 
-# -----------------------------
-# Supabase init
-# -----------------------------
 SUPABASE_KEY = "sb_secret_ZM3eyP6AYlfNHEg7yGbYjA_T_xr_fEj"
 SUPABASE_URL = "https://javabjsklqxusqrkdbst.supabase.co"
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+SEARCH_URL = "https://query2.finance.yahoo.com/v1/finance/search"
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0",
+    "Accept": "*/*",
+    "Referer": "https://finance.yahoo.com/",
+}
 
 # -----------------------------
-# Canonical symbol (DB truth)
+# Canonical ticker
 # -----------------------------
-def canonical_symbol(symbol: str) -> str:
-    """
-    Strip any suffix like .NS or .L.
-    This is what we store in DB.
-    """
+def canonical(symbol):
     return symbol.strip().upper().split(".")[0]
 
 
 # -----------------------------
-# Convert to yfinance symbol
+# Region validator
 # -----------------------------
-def to_yf_symbol(symbol: str, region: str) -> str:
-    symbol = canonical_symbol(symbol)
-    region = (region or "").upper()
+def matches_region(region, exch_disp, exchange):
+    region = region.upper()
 
+    if region == "LONDON":
+        return "LSE" in exch_disp or "London" in exch_disp
+
+    if region == "INDIA":
+        return "NSE" in exch_disp or "BSE" in exch_disp
+
+    if region == "US":
+        return exchange in {"NMS", "NYQ", "NGM", "ASE"}
+
+    if region == "CRYPTO":
+        return True
+
+    return False
+
+
+# -----------------------------
+# Validate ticker via Yahoo
+# -----------------------------
+async def validate_symbol(symbol, region):
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.get(
+            SEARCH_URL,
+            params={"q": symbol, "quotesCount": 10, "newsCount": 0},
+            headers=HEADERS,
+        )
+
+        quotes = resp.json().get("quotes", [])
+
+        for q in quotes:
+            sym = q.get("symbol")
+            exch_disp = q.get("exchDisp", "")
+            exchange = q.get("exchange")
+
+            if canonical(sym) == canonical(symbol) and matches_region(region, exch_disp, exchange):
+                return canonical(sym)
+
+    return None
+
+
+# -----------------------------
+# Build yfinance symbol
+# -----------------------------
+def to_yf(symbol, region):
     if region == "INDIA":
         return f"{symbol}.NS"
     if region == "LONDON":
         return f"{symbol}.L"
-
     return symbol
 
 
 # -----------------------------
 # Previous close
 # -----------------------------
-def get_previous_close(yf_symbol: str) -> float:
+def previous_close(yf_symbol):
     ticker = yf.Ticker(yf_symbol)
     hist = ticker.history(period="2d", interval="1d")
 
     if len(hist) < 2:
         raise ValueError("No history")
 
-    close_price = hist.iloc[-2]["Close"]
-    return round(float(close_price), 2)
+    return round(float(hist.iloc[-2]["Close"]), 2)
 
 
 # -----------------------------
-# Fetch markets
+# Fetch pairs from DB
 # -----------------------------
-def fetch_markets():
-    data = supabase.table("markets").select("symbol, region").execute().data
-    return [(row["symbol"], row["region"]) for row in data]
+def fetch_pairs(region):
+    rows = (
+        supabase.table("markets")
+        .select("company_name, symbol")
+        .eq("region", region)
+        .execute()
+        .data
+    )
 
-
-# -----------------------------
-# Fetch holdings
-# -----------------------------
-def fetch_holdings():
-    data = supabase.table("holdings").select("symbol, region").execute().data
-
-    pairs = []
-    for row in data:
-        symbol = row["symbol"]
-        region = row.get("region") or "US"
-        pairs.append((symbol, region))
-
-    return pairs
-
-
-# -----------------------------
-# Merge universe
-# -----------------------------
-def build_universe():
-    universe = set()
-
-    for pair in fetch_markets():
-        universe.add(pair)
-
-    for pair in fetch_holdings():
-        universe.add(pair)
-
-    return list(universe)
+    return rows
 
 
 # -----------------------------
 # Main
 # -----------------------------
-def main():
-    universe = build_universe()
+async def main(region):
+    rows = fetch_pairs(region)
 
-    print(f"Bootstrapping {len(universe)} symbols")
+    print(f"Bootstrapping {len(rows)} symbols")
 
-    for symbol, region in universe:
+    for row in rows:
+        company = row["company_name"]
+        raw_symbol = row["symbol"]
+
         try:
-            canon = canonical_symbol(symbol)
-            yf_symbol = to_yf_symbol(symbol, region)
+            symbol = await validate_symbol(raw_symbol, region)
 
-            prev_close = get_previous_close(yf_symbol)
+            if not symbol:
+                print(f"[SKIP] {company} → invalid ticker {raw_symbol}")
+                continue
+
+            yf_symbol = to_yf(symbol, region)
+
+            print(f"Validated {company} → {yf_symbol}")
+
+            price = previous_close(yf_symbol)
 
             supabase.table("market_prices").upsert(
                 {
-                    "symbol": canon,  # ← NO SUFFIX
+                    "symbol": symbol,
                     "region": region,
-                    "base_price": prev_close,
-                    "display_price": prev_close,
+                    "base_price": price,
+                    "display_price": price,
                 },
-                on_conflict="symbol,region"
+                on_conflict="symbol,region",
             ).execute()
 
-            print(f"[OK] {canon} ({region}) → {prev_close}")
+            print(f"[OK] {symbol} → {price}")
 
         except Exception as e:
-            print(f"[WARN] {symbol} ({region}) skipped: {e}")
+            print(f"[WARN] {company} failed: {e}")
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    import asyncio
+
+    region = sys.argv[1]
+    asyncio.run(main(region))
