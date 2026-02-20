@@ -15,6 +15,7 @@ HEADERS = {
     "Referer": "https://finance.yahoo.com/",
 }
 
+
 # -----------------------------
 # Canonical ticker
 # -----------------------------
@@ -79,16 +80,38 @@ def to_yf(symbol, region):
 
 
 # -----------------------------
-# Previous close
+# Fetch history once
 # -----------------------------
-def previous_close(yf_symbol):
+def fetch_history(yf_symbol):
     ticker = yf.Ticker(yf_symbol)
     hist = ticker.history(period="2d", interval="1d")
 
     if len(hist) < 2:
-        raise ValueError("No history")
+        raise ValueError("Not enough history")
 
-    return round(float(hist.iloc[-2]["Close"]), 2)
+    return hist
+
+
+# -----------------------------
+# Compute metrics
+# -----------------------------
+def compute_metrics(hist):
+    day_before = hist.iloc[-2]
+    yesterday = hist.iloc[-1]
+
+    base_price = round(float(day_before["Close"]), 2)
+
+    open_price = float(yesterday["Open"])
+    close_price = float(yesterday["Close"])
+
+    if open_price == 0:
+        change = 0.0
+    else:
+        change = ((open_price - close_price) / open_price) * 100
+
+    change = round(change, 4)
+
+    return base_price, change
 
 
 # -----------------------------
@@ -128,8 +151,9 @@ async def main(region):
             yf_symbol = to_yf(symbol, region)
 
             print(f"Validated {company} → {yf_symbol}")
-            print("INSERTING:", yf_symbol)
-            price = previous_close(yf_symbol)
+
+            hist = fetch_history(yf_symbol)
+            price, price_change = compute_metrics(hist)
 
             supabase.table("market_prices").upsert(
                 {
@@ -137,11 +161,12 @@ async def main(region):
                     "region": region,
                     "base_price": price,
                     "display_price": price,
+                    "yesterday_price_change": price_change,
                 },
                 on_conflict="symbol,region",
             ).execute()
 
-            print(f"[OK] {symbol} → {price}")
+            print(f"[OK] {symbol} → price {price} | change {price_change}%")
 
         except Exception as e:
             print(f"[WARN] {company} failed: {e}")
