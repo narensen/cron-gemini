@@ -128,7 +128,7 @@ async def main(region):
             yf_symbol = to_yf(symbol, region)
 
             print(f"Validated {company} → {yf_symbol}")
-
+            print("INSERTING:", yf_symbol)
             price = previous_close(yf_symbol)
 
             supabase.table("market_prices").upsert(
