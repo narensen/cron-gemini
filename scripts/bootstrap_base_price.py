@@ -133,7 +133,7 @@ async def main(region):
 
             supabase.table("market_prices").upsert(
                 {
-                    "symbol": symbol,
+                    "symbol": yf_symbol,
                     "region": region,
                     "base_price": price,
                     "display_price": price,
