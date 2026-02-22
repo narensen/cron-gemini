@@ -1,4 +1,4 @@
-name: Gemini → Base Price MVP
+name: Gemini → Inserting Securities
 
 on:
   schedule:
@@ -7,13 +7,24 @@ on:
     - cron: '30 6 * * 1-5'   # LONDON
     - cron: '0 */6 * * *'    # CRYPTO
 
+    - cron: '45 14 * * 1-5'  # CANADA
+    - cron: '15 7 * * 1-5'   # GERMANY
+    - cron: '20 7 * * 1-5'   # FRANCE
+    - cron: '30 0 * * 1-5'   # JAPAN
+    - cron: '30 1 * * 1-5'   # HONG KONG
+    - cron: '0 1 * * 1-5'    # CHINA
+    - cron: '0 0 * * 1-5'    # KOREA
+    - cron: '30 22 * * 1-5'  # AUSTRALIA
+    - cron: '0 1 * * 1-5'    # SINGAPORE
+    - cron: '10 7 * * 1-5'   # SWITZERLAND
+
 jobs:
   gemini-and-bootstrap:
     runs-on: ubuntu-latest
 
     env:
       SUPABASE_URL: https://javabjsklqxusqrkdbst.supabase.co
-      SUPABASE_KEY: "sb_secret_ZM3eyP6AYlfNHEg7yGbYjA_T_xr_fEj"
+      SUPABASE_KEY: sb_secret_ZM3eyP6AYlfNHEg7yGbYjA_T_xr_fEj
 
     steps:
       - name: Checkout repo
@@ -25,73 +36,36 @@ jobs:
           python-version: '3.11'
 
       - name: Install Python dependencies
-        run: |
-          pip install yfinance supabase
+        run: pip install yfinance supabase
 
-      # =========================
-      # US
-      # =========================
-      - name: Gemini US
-        if: github.event.schedule == '0 12 * * 1-5'
+      # Generic runner helper
+      - name: Run Gemini + Bootstrap
         run: |
-          curl -X POST https://javabjsklqxusqrkdbst.supabase.co/functions/v1/activate-gemini \
-            -H "Content-Type: application/json" \
-            -H "apikey: $SUPABASE_KEY" \
-            -H "Authorization: Bearer $SUPABASE_KEY" \
-            -d '{"region":"US"}'
+          REGION="${{ github.event.schedule }}"
 
-      - name: Bootstrap US prices
-        if: github.event.schedule == '0 12 * * 1-5'
-        run: |
-          python scripts/bootstrap_base_price.py US
+          run_region () {
+            curl -X POST $SUPABASE_URL/functions/v1/activate-gemini \
+              -H "Content-Type: application/json" \
+              -H "apikey: $SUPABASE_KEY" \
+              -H "Authorization: Bearer $SUPABASE_KEY" \
+              -d "{\"region\":\"$1\"}"
 
-      # =========================
-      # INDIA
-      # =========================
-      - name: Gemini INDIA
-        if: github.event.schedule == '0 2 * * 1-5'
-        run: |
-          curl -X POST https://javabjsklqxusqrkdbst.supabase.co/functions/v1/activate-gemini \
-            -H "Content-Type: application/json" \
-            -H "apikey: $SUPABASE_KEY" \
-            -H "Authorization: Bearer $SUPABASE_KEY" \
-            -d '{"region":"INDIA"}'
+            python scripts/bootstrap_base_price.py $1
+          }
 
-      - name: Bootstrap INDIA prices
-        if: github.event.schedule == '0 2 * * 1-5'
-        run: |
-          python scripts/bootstrap_base_price.py INDIA
-
-      # =========================
-      # LONDON
-      # =========================
-      - name: Gemini LONDON
-        if: github.event.schedule == '30 6 * * 1-5'
-        run: |
-          curl -X POST https://javabjsklqxusqrkdbst.supabase.co/functions/v1/activate-gemini \
-            -H "Content-Type: application/json" \
-            -H "apikey: $SUPABASE_KEY" \
-            -H "Authorization: Bearer $SUPABASE_KEY" \
-            -d '{"region":"LONDON"}'
-
-      - name: Bootstrap LONDON prices
-        if: github.event.schedule == '30 6 * * 1-5'
-        run: |
-          python scripts/bootstrap_base_price.py LONDON
-
-      # =========================
-      # CRYPTO
-      # =========================
-      - name: Gemini CRYPTO
-        if: github.event.schedule == '0 */6 * * *'
-        run: |
-          curl -X POST https://javabjsklqxusqrkdbst.supabase.co/functions/v1/activate-gemini \
-            -H "Content-Type: application/json" \
-            -H "apikey: $SUPABASE_KEY" \
-            -H "Authorization: Bearer $SUPABASE_KEY" \
-            -d '{"region":"CRYPTO"}'
-
-      - name: Bootstrap CRYPTO prices
-        if: github.event.schedule == '0 */6 * * *'
-        run: |
-          python scripts/bootstrap_base_price.py CRYPTO
+          case "$REGION" in
+            "0 12 * * 1-5") run_region US ;;
+            "0 2 * * 1-5") run_region INDIA ;;
+            "30 6 * * 1-5") run_region LONDON ;;
+            "0 */6 * * *") run_region CRYPTO ;;
+            "45 14 * * 1-5") run_region CANADA ;;
+            "15 7 * * 1-5") run_region GERMANY ;;
+            "20 7 * * 1-5") run_region FRANCE ;;
+            "30 0 * * 1-5") run_region JAPAN ;;
+            "30 1 * * 1-5") run_region HONGKONG ;;
+            "0 1 * * 1-5") run_region CHINA ;;
+            "0 0 * * 1-5") run_region KOREA ;;
+            "30 22 * * 1-5") run_region AUSTRALIA ;;
+            "0 1 * * 1-5") run_region SINGAPORE ;;
+            "10 7 * * 1-5") run_region SWITZERLAND ;;
+          esac
